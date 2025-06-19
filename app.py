@@ -469,25 +469,90 @@ class FastHealthAssistant:
             return self._format_doctor_recommendation(doctors, context)
         
         elif conversation['stage'] == 'recommendation':
-            # Post-recommendation stage
-            if any(word in user_input.lower() for word in ['thank', 'thanks', 'appreciate']):
-                return "You're very welcome! I hope you feel better soon. Don't hesitate to reach out if you need help finding other doctors or have any health concerns."
-            elif any(word in user_input.lower() for word in ['more', 'other', 'different', 'alternative']):
-                # User wants more options
+            # Post-recommendation stage - handle various user responses
+            user_lower = user_input.lower()
+            
+            if any(word in user_lower for word in ['thank', 'thanks', 'appreciate', 'good', 'ok', 'okay']):
+                # Reset for potential new conversation
+                conversation['stage'] = 'ready_for_new'
+                return "You're very welcome! I hope you feel better soon. If you have any other health concerns or need to find doctors for different symptoms, just let me know!"
+            
+            elif any(word in user_lower for word in ['more', 'other', 'different', 'alternative', 'another doctor']):
+                # User wants more doctor options for same condition
                 all_doctors = self._recommend_doctors(conversation['specialties'])
                 if len(all_doctors) > 3:
                     return self._format_doctor_recommendation(all_doctors[3:6], "Here are some additional doctors you might consider:")
                 else:
-                    return "Those were the top recommendations for your condition. You might also want to check with your local hospital or clinic for more options in your area."
-            elif any(word in user_input.lower() for word in ['new', 'different', 'another']) and any(word in user_input.lower() for word in ['problem', 'issue', 'symptom']):
-                # New health issue
+                    conversation['stage'] = 'ready_for_new'
+                    return "Those were the top recommendations for your condition. You might also want to check with your local hospital. Do you have any other health concerns I can help with?"
+            
+            elif any(symptom in user_lower for symptom in ['pain', 'hurt', 'sick', 'problem', 'issue', 'symptom', 'feel', 'ache']):
+                # User mentions new symptoms - reset and start fresh
+                print("New symptoms detected - resetting conversation")
                 conversation['stage'] = 'initial_assessment'
                 conversation['symptoms'] = []
                 conversation['specialties'] = []
                 conversation['answered_questions'] = []
-                return "I understand you have a different health concern. What new symptoms or problems are you experiencing?"
+                conversation['user_info'] = {'age': None, 'duration': None, 'severity': None, 'location': None}
+                
+                # Process the new symptoms immediately
+                detected_specialties = self._analyze_symptoms(user_input_clean)
+                if detected_specialties:
+                    conversation['specialties'].extend(detected_specialties)
+                    conversation['stage'] = 'gathering_details'
+                    primary_specialty = detected_specialties[0]
+                    next_question = self._get_next_question(primary_specialty, conversation['answered_questions'])
+                    
+                    if next_question:
+                        conversation['answered_questions'].append(next_question)
+                        return f"I understand you have a new concern: {user_input_clean}. {next_question}"
+                    else:
+                        conversation['stage'] = 'recommendation'
+                        doctors = self._recommend_doctors(conversation['specialties'])
+                        return self._format_doctor_recommendation(doctors, "Based on your new symptoms, here are some doctors who can help:")
+                else:
+                    return "I understand you have a new health concern. Could you tell me more specifically what symptoms you're experiencing?"
+            
             else:
-                return "Is there anything specific you'd like to know about these doctors, or do you have any other health concerns I can help you with?"
+                return "Is there anything specific you'd like to know about these doctors? Or do you have any other health concerns I can help you with? Just describe your symptoms and I'll find the right doctors for you."
+        
+        elif conversation['stage'] == 'ready_for_new':
+            # Ready to handle new health concerns
+            user_lower = user_input.lower()
+            
+            # Check for greetings or general queries
+            if user_lower in ['hi', 'hello', 'hey', 'sup']:
+                return "Hello again! How can I help you today? Do you have any health concerns or symptoms you'd like to discuss?"
+            
+            # Check for health-related input
+            if any(symptom in user_lower for symptom in ['pain', 'hurt', 'sick', 'problem', 'issue', 'symptom', 'feel', 'ache', 'not well', 'unwell']):
+                print("Starting new health assessment")
+                conversation['stage'] = 'initial_assessment'
+                conversation['symptoms'] = []
+                conversation['specialties'] = []
+                conversation['answered_questions'] = []
+                conversation['user_info'] = {'age': None, 'duration': None, 'severity': None, 'location': None}
+                
+                # Process the symptoms
+                detected_specialties = self._analyze_symptoms(user_input_clean)
+                if detected_specialties:
+                    conversation['specialties'].extend(detected_specialties)
+                    conversation['stage'] = 'gathering_details'
+                    primary_specialty = detected_specialties[0]
+                    next_question = self._get_next_question(primary_specialty, conversation['answered_questions'])
+                    
+                    if next_question:
+                        conversation['answered_questions'].append(next_question)
+                        return f"I understand you're experiencing {user_input_clean}. {next_question}"
+                    else:
+                        conversation['stage'] = 'recommendation'
+                        doctors = self._recommend_doctors(conversation['specialties'])
+                        return self._format_doctor_recommendation(doctors, "Based on what you've told me, here are some doctors who can help:")
+                else:
+                    return "Could you tell me more specifically what symptoms you're experiencing? For example, are you having pain anywhere, feeling nauseous, having trouble breathing, or experiencing something else?"
+            
+            else:
+                return "I'm here to help you find the right doctor for any health concerns. What symptoms or health issues are you experiencing today?"
         
         # Default fallback
         return "I'm here to help you find the right doctor for your health concerns. Could you tell me what symptoms you're experiencing?"
