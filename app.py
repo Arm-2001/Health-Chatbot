@@ -14,7 +14,7 @@ class HealthAssistantChatbot:
     def __init__(self):
         self.api_key = os.getenv('OPENROUTER_API_KEY', 'your_openrouter_api_key_here')
         self.base_url = "https://openrouter.ai/api/v1/chat/completions"
-        self.model = "deepseek/deepseek-r1"
+        self.model = "deepseek/deepseek-r1-0528:free"  # Updated to use R1 0528 free
         
         self.doctors = self._load_doctor_data()
         self.conversations = {}
@@ -265,11 +265,13 @@ IMPORTANT RULES:
 - Don't be overly formal or robotic"""
 
     def _call_deepseek_api(self, messages: List[Dict], max_tokens: int = 500) -> str:
-        """Call DeepSeek API with error handling"""
+        """Call DeepSeek API with improved error handling"""
         try:
             headers = {
                 "Authorization": f"Bearer {self.api_key}",
-                "Content-Type": "application/json"
+                "Content-Type": "application/json",
+                "HTTP-Referer": "http://localhost:5000",  # Required for free tier
+                "X-Title": "Health Assistant Chatbot"      # Optional but helpful
             }
             
             payload = {
@@ -280,19 +282,108 @@ IMPORTANT RULES:
                 "top_p": 0.9
             }
             
-            response = requests.post(self.base_url, json=payload, headers=headers, timeout=25)
-            response.raise_for_status()
+            print(f"Calling API with model: {self.model}")
+            response = requests.post(self.base_url, json=payload, headers=headers, timeout=30)
             
-            result = response.json()
-            
-            if 'choices' in result and result['choices'] and result['choices'][0]['message']['content'].strip():
-                return result['choices'][0]['message']['content'].strip()
+            # Better error handling
+            if response.status_code == 200:
+                result = response.json()
+                if 'choices' in result and result['choices'] and result['choices'][0]['message']['content'].strip():
+                    return result['choices'][0]['message']['content'].strip()
+                else:
+                    print("API returned empty response")
+                    return None
+            elif response.status_code == 402:
+                print("Payment required - free tier limit may be exceeded")
+                return None
+            elif response.status_code == 429:
+                print("Rate limit exceeded - please wait before making more requests")
+                return None
             else:
+                print(f"API error {response.status_code}: {response.text}")
                 return None
                 
         except Exception as e:
             print(f"DeepSeek API error: {str(e)}")
             return None
+
+    def _analyze_symptoms_and_recommend_fallback(self, user_input: str, conversation_history: List) -> str:
+        """Enhanced fallback system with intelligent doctor recommendations"""
+        user_lower = user_input.lower()
+        all_conversation = user_input.lower()
+        
+        # Include conversation history for better context
+        if conversation_history:
+            recent_messages = " ".join([msg.get('user', '') for msg in conversation_history[-3:]])
+            all_conversation = (recent_messages + " " + user_input).lower()
+        
+        # Enhanced symptom-to-specialty mapping
+        specialty_keywords = {
+            'gastroenterologist': ['stomach', 'abdomen', 'belly', 'digestive', 'nausea', 'vomit', 'diarrhea', 'constipation', 'gastric', 'bowel', 'liver', 'gut'],
+            'cardiologist': ['heart', 'chest pain', 'blood pressure', 'cardiac', 'palpitations', 'bp', 'hypertension', 'chest hurt', 'heart beat'],
+            'neurologist': ['headache', 'migraine', 'brain', 'seizure', 'memory', 'nervous', 'dizzy', 'head hurt', 'head pain', 'confusion'],
+            'pediatrician': ['child', 'baby', 'infant', 'kid', 'toddler', 'pediatric', 'my son', 'my daughter', 'children'],
+            'gynecologist': ['pregnancy', 'pregnant', 'menstrual', 'period', 'reproductive', 'uterus', 'ovarian', 'women health'],
+            'oncologist': ['cancer', 'tumor', 'chemotherapy', 'oncology', 'malignant', 'biopsy', 'mass'],
+            'pulmonologist': ['lung', 'breathing', 'cough', 'asthma', 'pneumonia', 'respiratory', 'shortness of breath', 'chest congestion'],
+            'nephrologist': ['kidney', 'urine', 'urinary', 'dialysis', 'renal', 'bladder'],
+            'surgeon': ['surgery', 'operation', 'surgical', 'trauma', 'accident', 'injury', 'wound', 'cut', 'broken'],
+            'radiologist': ['scan', 'x-ray', 'mri', 'ct scan', 'imaging', 'xray']
+        }
+        
+        # Find matching specialties
+        matching_specialties = []
+        for specialty, keywords in specialty_keywords.items():
+            matches = sum(1 for keyword in keywords if keyword in all_conversation)
+            if matches > 0:
+                matching_specialties.append((specialty, matches))
+        
+        # Sort by relevance (number of matches)
+        matching_specialties.sort(key=lambda x: x[1], reverse=True)
+        
+        # Get recommended doctors
+        recommended_doctors = []
+        
+        if matching_specialties:
+            # Get doctors for top 2 matching specialties
+            for specialty, _ in matching_specialties[:2]:
+                specialty_doctors = [doc for doc in self.doctors if doc['category'].lower() == specialty]
+                if specialty_doctors:
+                    # Sort by experience and take top 2
+                    specialty_doctors.sort(key=lambda x: int(x['experience'].split()[0]), reverse=True)
+                    recommended_doctors.extend(specialty_doctors[:2])
+        
+        # If no specific matches, recommend general doctors
+        if not recommended_doctors:
+            # Sort all doctors by experience and take top 3
+            all_doctors_sorted = sorted(self.doctors, key=lambda x: int(x['experience'].split()[0]), reverse=True)
+            recommended_doctors = all_doctors_sorted[:3]
+        
+        # Remove duplicates while preserving order
+        seen = set()
+        unique_doctors = []
+        for doc in recommended_doctors:
+            if doc['name'] not in seen:
+                seen.add(doc['name'])
+                unique_doctors.append(doc)
+        
+        # Format response
+        if any(word in user_lower for word in ['pain', 'hurt', 'sick', 'symptoms', 'problem']):
+            response = "I'm sorry to hear you're not feeling well. Based on what you've described, here are some doctors who could help:\n\n"
+        else:
+            response = "Here are some highly recommended doctors for you:\n\n"
+        
+        response += "**RECOMMENDED DOCTORS:**\n\n"
+        
+        for i, doctor in enumerate(unique_doctors[:3], 1):
+            response += f"**{i}. {doctor['name']}** - {doctor['category']}\n"
+            response += f"• Experience: {doctor['experience']} | Expertise: {doctor['expertise']}\n"
+            response += f"• Phone: {doctor['phone']} | Location: {doctor['address']}\n"
+            response += f"• Available: {doctor['start_time']} to {doctor['off_time']}\n\n"
+        
+        response += "Would you like me to tell you more about any of these doctors, or do you have other questions?"
+        
+        return response
 
     def _should_recommend_doctors(self, user_input: str, conversation_history: List) -> bool:
         """Intelligently decide if we should recommend doctors based on context"""
@@ -329,7 +420,7 @@ IMPORTANT RULES:
         
         return health_mentioned
 
-    def _get_smart_fallback(self, user_input: str) -> str:
+    def _get_smart_fallback(self, user_input: str, conversation_history: List) -> str:
         """Provide contextual fallback responses"""
         user_lower = user_input.lower()
         
@@ -342,8 +433,9 @@ IMPORTANT RULES:
         if 'how are you' in user_lower:
             return "I'm doing well, thank you for asking! I'm here to help you with any health concerns or doctor recommendations. How are you feeling?"
         
-        if any(word in user_lower for word in ['pain', 'hurt', 'sick', 'symptoms']):
-            return "I'm sorry to hear you're not feeling well. Can you tell me a bit more about what's bothering you? I'll help you find the right doctor."
+        # If user mentions health symptoms, provide doctor recommendations
+        if self._should_recommend_doctors(user_input, conversation_history):
+            return self._analyze_symptoms_and_recommend_fallback(user_input, conversation_history)
         
         return "I'm here to help you find the right doctor for your health needs. What's on your mind today?"
 
@@ -385,7 +477,7 @@ IMPORTANT RULES:
         
         else:
             # Smart fallback when AI fails
-            fallback_response = self._get_smart_fallback(user_input_clean)
+            fallback_response = self._get_smart_fallback(user_input_clean, conversation['messages'])
             conversation['messages'].append({'user': user_input, 'assistant': fallback_response})
             return fallback_response
 
@@ -436,21 +528,24 @@ def chat():
 def health():
     return jsonify({
         'status': 'healthy', 
-        'service': 'Natural Health Assistant AI',
+        'service': 'Natural Health Assistant AI - DeepSeek R1 0528',
         'timestamp': datetime.datetime.now().isoformat(),
-        'doctors_loaded': len(chatbot.doctors)
+        'doctors_loaded': len(chatbot.doctors),
+        'model': chatbot.model
     })
 
 @app.route('/', methods=['GET'])
 def index():
     return jsonify({
-        'message': 'Natural Health Assistant Chatbot API',
+        'message': 'Natural Health Assistant Chatbot API - DeepSeek R1 0528',
         'status': 'online',
+        'model': 'deepseek/deepseek-r1-0528:free',
         'features': [
             'Natural conversation flow',
             'Contextual doctor recommendations', 
             'Empathetic responses',
-            'Flexible interaction patterns'
+            'Flexible interaction patterns',
+            'Smart fallback system'
         ],
         'endpoints': {
             'chat': '/api/chat (POST)',
@@ -464,5 +559,6 @@ if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     print(f"🤖 Starting Natural Health Assistant Chatbot on port {port}")
     print(f"👨‍⚕️ Loaded {len(chatbot.doctors)} doctors")
+    print(f"🧠 Using model: {chatbot.model}")
     print("🗣️  Ready for natural conversations!")
     app.run(host='0.0.0.0', port=port, debug=False)
