@@ -244,12 +244,12 @@ RESPONSE STYLES:
 RECOMMENDATION FORMAT (use when appropriate):
 **Here are some doctors who could help:**
 
-**[Doctor Name]** - {category}
-• Experience: {experience} | Expertise: {expertise}  
-• Phone: {phone} | Location: {address}
-• Available: {start_time} to {off_time}
+**[Doctor Name]** - [Specialty]
+• Experience: [Years] | Expertise: [Qualifications]  
+• Phone: [Phone Number] | Location: [Address]
+• Available: [Start Time] to [End Time]
 
-**[Another Doctor]** - {category}
+**[Another Doctor]** - [Specialty]
 • [similar format]
 
 End with: "Would you like me to tell you more about any of these doctors, or do you have other questions?"
