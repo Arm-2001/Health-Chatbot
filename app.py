@@ -195,102 +195,76 @@ class HealthAssistantChatbot:
         
         return doctors
 
-    def _create_system_prompt(self, stage: str, conversation_data: Dict = None) -> str:
-        """Create dynamic system prompts based on conversation stage"""
+    def _create_system_prompt(self) -> str:
+        """Create a dynamic system prompt for natural conversation"""
         
-        doctor_catalog = "AVAILABLE DOCTORS:\n\n"
+        doctor_catalog = "AVAILABLE DOCTORS DATABASE:\n\n"
         for doctor in self.doctors:
             doctor_catalog += f"• {doctor['name']} - {doctor['category']}\n"
             doctor_catalog += f"  Experience: {doctor['experience']}, Expertise: {doctor['expertise']}\n"
             doctor_catalog += f"  Phone: {doctor['phone']}, Address: {doctor['address']}\n"
             doctor_catalog += f"  Available: {doctor['start_time']} to {doctor['off_time']}\n\n"
         
-        base_prompt = f"""You are a professional health assistant chatbot helping patients find suitable doctors.
+        return f"""You are a friendly, professional health assistant chatbot that helps patients find suitable doctors. You should be conversational, empathetic, and natural - like talking to a helpful medical receptionist or nurse.
 
 {doctor_catalog}
 
-DOCTOR SPECIALTIES:
-- Cardiologist: Heart problems, chest pain, blood pressure, cardiac issues
-- Neurologist: Brain, nervous system, headaches, migraines, seizures, memory issues
-- Gastroenterologist: Stomach, digestive issues, abdominal pain, nausea, liver problems
-- Pediatrician: Children's health (under 18 years), baby health, childhood diseases
-- Gynecologist: Women's reproductive health, pregnancy, menstrual issues
-- Oncologist: Cancer-related concerns, tumors, chemotherapy follow-up
-- Radiologist: Medical imaging, X-rays, MRI, CT scans interpretation
-- Surgeon: Surgical procedures, injuries, trauma, operations needed
-- Pulmonologist: Lung problems, breathing issues, asthma, respiratory diseases
-- Nephrologist: Kidney problems, urinary issues, dialysis
+SPECIALTIES GUIDE:
+- Cardiologist: Heart issues, chest pain, blood pressure, palpitations, heart conditions
+- Neurologist: Brain/nervous system, headaches, migraines, seizures, memory problems, dizziness
+- Gastroenterologist: Stomach, digestive issues, abdominal pain, nausea, liver problems, bowel issues
+- Pediatrician: Children's health (under 18), baby/infant care, childhood diseases
+- Gynecologist: Women's reproductive health, pregnancy, menstrual issues, female health concerns
+- Oncologist: Cancer concerns, tumors, follow-up care, chemotherapy support
+- Radiologist: Medical imaging, X-rays, MRI, CT scans, diagnostic imaging
+- Surgeon: Surgical procedures, injuries, trauma, operations, wounds
+- Pulmonologist: Lung problems, breathing issues, asthma, cough, respiratory conditions
+- Nephrologist: Kidney problems, urinary issues, kidney stones, dialysis
 
-"""
-        
-        if stage == "initial_assessment":
-            return base_prompt + """
-CURRENT TASK: Initial health assessment
-- Greet the user warmly and ask about their main health concern
-- Be empathetic and professional
-- Ask only ONE specific question to understand their primary symptom or concern
-- Keep response concise and focused
-- Do not recommend doctors yet - just gather information
+YOUR APPROACH:
+1. **Be naturally conversational** - respond to what the user actually says, don't force a rigid pattern
+2. **Listen and adapt** - if they want to chat first, chat. If they have urgent symptoms, focus on that
+3. **Ask clarifying questions naturally** - only when needed, like a human would
+4. **Recommend multiple doctors when appropriate** - give options, not just one
+5. **Be empathetic** - acknowledge their concerns and feelings
+6. **Don't be robotic** - avoid overly structured responses unless they specifically want that
 
-RESPONSE FORMAT: Keep it conversational and ask only one clear question."""
+WHEN TO RECOMMEND DOCTORS:
+- When user mentions specific symptoms or health concerns
+- When they ask for doctor recommendations
+- When you have enough information to make good suggestions
+- If they seem ready for recommendations (don't force it)
 
-        elif stage == "detailed_inquiry":
-            return base_prompt + f"""
-CURRENT TASK: Detailed symptom inquiry
-CONVERSATION SO FAR: {conversation_data.get('summary', 'User has shared initial concern')}
+RESPONSE STYLES:
+- **Casual chat**: Be friendly and conversational
+- **Health concerns**: Be more focused but still warm
+- **Urgent symptoms**: Be direct but caring
+- **Follow-up questions**: Ask naturally, not like a form
 
-- Ask ONE specific follow-up question based on their previous response
-- Focus on understanding: duration, severity, location, associated symptoms, or triggers
-- Be empathetic and professional
-- Do not recommend doctors yet - continue gathering information
-- Ask questions like: "How long have you been experiencing this?", "Can you describe the pain/discomfort?", "What seems to trigger it?"
+RECOMMENDATION FORMAT (use when appropriate):
+**Here are some doctors who could help:**
 
-RESPONSE FORMAT: Ask only one targeted question to better understand their condition."""
+**[Doctor Name]** - {category}
+• Experience: {experience} | Expertise: {expertise}  
+• Phone: {phone} | Location: {address}
+• Available: {start_time} to {off_time}
 
-        elif stage == "final_assessment":
-            return base_prompt + f"""
-CURRENT TASK: Final assessment and doctor recommendation
-CONVERSATION SUMMARY: {conversation_data.get('summary', '')}
-ALL SYMPTOMS/CONCERNS: {conversation_data.get('all_symptoms', '')}
+**[Another Doctor]** - {category}
+• [similar format]
 
-Based on the conversation, you must:
-1. Analyze all symptoms and concerns mentioned
-2. Determine the most appropriate medical specialty
-3. Recommend 2-3 suitable doctors from the database (not just one!)
-4. Consider location preferences if mentioned
-5. Prioritize doctors by experience and expertise match
+End with: "Would you like me to tell you more about any of these doctors, or do you have other questions?"
 
-CRITICAL: Recommend MULTIPLE doctors (2-3) when possible, not just one. Consider:
-- Primary specialty match
-- Experience level
-- Location preferences
-- Availability times
+IMPORTANT RULES:
+- Respond naturally to whatever the user says
+- Don't force them through a rigid questionnaire 
+- Be human-like in your responses
+- Ask for clarification only when genuinely needed
+- Recommend 2-3 doctors when you have enough info
+- Handle casual conversation naturally
+- Be empathetic about health concerns
+- Don't be overly formal or robotic"""
 
-RESPONSE FORMAT:
-Brief summary of their condition, then:
-
-**RECOMMENDED DOCTORS:**
-
-**1. [Primary Recommendation]**
-• Name: [Name]
-• Specialty: [Category] 
-• Experience: [Experience]
-• Expertise: [Expertise]
-• Phone: [Phone]
-• Address: [Address]
-• Available: [Start Time] to [Off Time]
-
-**2. [Alternative Option]**
-• Name: [Name]
-• Specialty: [Category]
-[... etc]
-
-End with: "I recommend starting with [primary doctor name]. Please call to schedule an appointment. Take care!"
-"""
-
-        return base_prompt
-
-    def _call_deepseek_api(self, messages: List[Dict], max_tokens: int = 400) -> str:
+    def _call_deepseek_api(self, messages: List[Dict], max_tokens: int = 500) -> str:
         """Call DeepSeek API with error handling"""
         try:
             headers = {
@@ -301,12 +275,12 @@ End with: "I recommend starting with [primary doctor name]. Please call to sched
             payload = {
                 "model": self.model,
                 "messages": messages,
-                "temperature": 0.4,
+                "temperature": 0.6,  # Slightly higher for more natural responses
                 "max_tokens": max_tokens,
                 "top_p": 0.9
             }
             
-            response = requests.post(self.base_url, json=payload, headers=headers, timeout=20)
+            response = requests.post(self.base_url, json=payload, headers=headers, timeout=25)
             response.raise_for_status()
             
             result = response.json()
@@ -320,205 +294,100 @@ End with: "I recommend starting with [primary doctor name]. Please call to sched
             print(f"DeepSeek API error: {str(e)}")
             return None
 
+    def _should_recommend_doctors(self, user_input: str, conversation_history: List) -> bool:
+        """Intelligently decide if we should recommend doctors based on context"""
+        user_lower = user_input.lower()
+        
+        # Direct requests for recommendations
+        direct_requests = ['recommend', 'suggest', 'find doctor', 'need doctor', 'doctor for', 'who should i see']
+        if any(phrase in user_lower for phrase in direct_requests):
+            return True
+        
+        # Health symptoms mentioned
+        health_indicators = [
+            'pain', 'hurt', 'sick', 'symptoms', 'problem', 'issue', 'concern',
+            'fever', 'headache', 'stomach', 'chest', 'breathing', 'cough',
+            'dizzy', 'nausea', 'vomit', 'diarrhea', 'constipation', 'rash',
+            'swelling', 'infection', 'injury', 'accident', 'broken', 'sprain',
+            'heart', 'lung', 'kidney', 'liver', 'brain', 'nervous',
+            'pregnant', 'pregnancy', 'menstrual', 'period',
+            'child', 'baby', 'infant', 'kid', 'pediatric'
+        ]
+        
+        # Check if user mentioned health issues
+        health_mentioned = any(word in user_lower for word in health_indicators)
+        
+        # Look at conversation context - if they've been discussing health for a while
+        if conversation_history:
+            recent_conversation = " ".join([msg.get('user', '') + ' ' + msg.get('assistant', '') 
+                                         for msg in conversation_history[-3:]])
+            context_health = any(word in recent_conversation.lower() for word in health_indicators)
+            
+            # If health has been discussed and user provides more details
+            if context_health and len(user_input.split()) > 3:
+                return True
+        
+        return health_mentioned
+
+    def _get_smart_fallback(self, user_input: str) -> str:
+        """Provide contextual fallback responses"""
+        user_lower = user_input.lower()
+        
+        if any(greeting in user_lower for greeting in ['hi', 'hello', 'hey', 'sup']):
+            return "Hello! I'm here to help you find the right doctor for any health concerns. How can I assist you today?"
+        
+        if any(word in user_lower for word in ['thanks', 'thank you', 'bye', 'goodbye']):
+            return "You're welcome! Take care of your health, and don't hesitate to reach out if you need any doctor recommendations."
+        
+        if 'how are you' in user_lower:
+            return "I'm doing well, thank you for asking! I'm here to help you with any health concerns or doctor recommendations. How are you feeling?"
+        
+        if any(word in user_lower for word in ['pain', 'hurt', 'sick', 'symptoms']):
+            return "I'm sorry to hear you're not feeling well. Can you tell me a bit more about what's bothering you? I'll help you find the right doctor."
+        
+        return "I'm here to help you find the right doctor for your health needs. What's on your mind today?"
+
     def process_query(self, user_input: str, session_id: str = "default") -> str:
-        """Process user query with improved conversation flow"""
+        """Process user query with natural conversation flow"""
         
         # Initialize conversation if new
         if session_id not in self.conversations:
-            self.conversations[session_id] = {
-                'messages': [],
-                'stage': 'greeting',
-                'questions_asked': 0,
-                'collected_info': {
-                    'symptoms': [],
-                    'duration': '',
-                    'severity': '',
-                    'location': '',
-                    'additional_info': []
-                }
-            }
+            self.conversations[session_id] = {'messages': []}
         
         conversation = self.conversations[session_id]
         user_input_clean = user_input.strip()
         
-        # Handle greetings and very short inputs
-        if conversation['stage'] == 'greeting' or user_input.lower().strip() in ['hi', 'hello', 'hey', 'sup']:
-            conversation['stage'] = 'initial_assessment'
+        # Build conversation context for API
+        system_prompt = self._create_system_prompt()
+        messages = [{"role": "system", "content": system_prompt}]
+        
+        # Add recent conversation history (last 6 messages to keep context but stay within limits)
+        recent_history = conversation['messages'][-6:] if len(conversation['messages']) > 6 else conversation['messages']
+        for msg in recent_history:
+            messages.append({"role": "user", "content": msg['user']})
+            messages.append({"role": "assistant", "content": msg['assistant']})
+        
+        # Add current user input
+        messages.append({"role": "user", "content": user_input_clean})
+        
+        # Try to get AI response
+        ai_response = self._call_deepseek_api(messages)
+        
+        if ai_response:
+            # Store conversation
+            conversation['messages'].append({'user': user_input, 'assistant': ai_response})
             
-            system_prompt = self._create_system_prompt('initial_assessment')
-            messages = [
-                {"role": "system", "content": system_prompt}
-            ]
+            # Clean up conversation history if it gets too long
+            if len(conversation['messages']) > 12:
+                conversation['messages'] = conversation['messages'][-10:]
             
-            if user_input.lower().strip() in ['hi', 'hello', 'hey', 'sup']:
-                messages.append({"role": "user", "content": "Hi"})
-            else:
-                messages.append({"role": "user", "content": user_input_clean})
-            
-            response = self._call_deepseek_api(messages)
-            
-            if response:
-                conversation['messages'].append({'user': user_input, 'assistant': response})
-                return response
-            else:
-                fallback = "Hello! I'm your health assistant. I'm here to help you find the right doctor. What health concern would you like to discuss today?"
-                conversation['messages'].append({'user': user_input, 'assistant': fallback})
-                return fallback
-
-        # Initial assessment stage
-        elif conversation['stage'] == 'initial_assessment':
-            conversation['collected_info']['symptoms'].append(user_input_clean)
-            conversation['stage'] = 'detailed_inquiry'
-            conversation['questions_asked'] = 1
-            
-            system_prompt = self._create_system_prompt('detailed_inquiry', {
-                'summary': f"User's main concern: {user_input_clean}"
-            })
-            
-            messages = [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_input_clean}
-            ]
-            
-            response = self._call_deepseek_api(messages)
-            
-            if response:
-                conversation['messages'].append({'user': user_input, 'assistant': response})
-                return response
-            else:
-                fallback = "Thank you for sharing that. How long have you been experiencing these symptoms?"
-                conversation['messages'].append({'user': user_input, 'assistant': fallback})
-                return fallback
-
-        # Detailed inquiry stage (ask 2-3 more questions)
-        elif conversation['stage'] == 'detailed_inquiry':
-            conversation['collected_info']['additional_info'].append(user_input_clean)
-            conversation['questions_asked'] += 1
-            
-            # After 2-3 questions, move to final assessment
-            if conversation['questions_asked'] >= 3:
-                conversation['stage'] = 'final_recommendation'
-                
-                all_conversation = " ".join([msg['user'] for msg in conversation['messages']] + [user_input_clean])
-                
-                system_prompt = self._create_system_prompt('final_assessment', {
-                    'summary': f"User has discussed: {all_conversation}",
-                    'all_symptoms': all_conversation
-                })
-                
-                # Build conversation history for context
-                messages = [{"role": "system", "content": system_prompt}]
-                
-                # Add recent conversation context
-                for msg in conversation['messages'][-3:]:
-                    messages.append({"role": "user", "content": msg['user']})
-                    messages.append({"role": "assistant", "content": msg['assistant']})
-                
-                messages.append({"role": "user", "content": user_input_clean})
-                
-                response = self._call_deepseek_api(messages, max_tokens=600)
-                
-                if response:
-                    conversation['messages'].append({'user': user_input, 'assistant': response})
-                    # Reset conversation for next consultation
-                    conversation['stage'] = 'greeting'
-                    conversation['questions_asked'] = 0
-                    conversation['collected_info'] = {'symptoms': [], 'duration': '', 'severity': '', 'location': '', 'additional_info': []}
-                    return response
-                else:
-                    # Fallback recommendation logic
-                    return self._fallback_recommendation(all_conversation)
-            
-            else:
-                # Continue asking questions
-                conversation_context = " ".join([msg['user'] + " " + msg['assistant'] for msg in conversation['messages'][-2:]])
-                
-                system_prompt = self._create_system_prompt('detailed_inquiry', {
-                    'summary': conversation_context
-                })
-                
-                messages = [
-                    {"role": "system", "content": system_prompt}
-                ]
-                
-                # Add recent context
-                for msg in conversation['messages'][-2:]:
-                    messages.append({"role": "user", "content": msg['user']})
-                    messages.append({"role": "assistant", "content": msg['assistant']})
-                
-                messages.append({"role": "user", "content": user_input_clean})
-                
-                response = self._call_deepseek_api(messages)
-                
-                if response:
-                    conversation['messages'].append({'user': user_input, 'assistant': response})
-                    return response
-                else:
-                    fallback_questions = [
-                        "Can you describe how severe the symptoms are on a scale of 1-10?",
-                        "Are there any specific triggers or times when you notice these symptoms more?",
-                        "Have you tried any treatments or medications for this?"
-                    ]
-                    fallback = fallback_questions[min(conversation['questions_asked']-2, len(fallback_questions)-1)]
-                    conversation['messages'].append({'user': user_input, 'assistant': fallback})
-                    return fallback
-
-        # Handle any other cases
+            return ai_response
+        
         else:
-            conversation['stage'] = 'initial_assessment'
-            return self.process_query(user_input, session_id)
-
-    def _fallback_recommendation(self, symptoms_text: str) -> str:
-        """Fallback recommendation when API fails"""
-        symptoms_lower = symptoms_text.lower()
-        
-        # Simple keyword matching for fallback
-        specialty_matches = {
-            'cardiologist': ['heart', 'chest pain', 'blood pressure', 'cardiac'],
-            'neurologist': ['headache', 'migraine', 'brain', 'seizure', 'memory'],
-            'gastroenterologist': ['stomach', 'abdomen', 'digestive', 'nausea'],
-            'pediatrician': ['child', 'baby', 'infant', 'kid'],
-            'gynecologist': ['pregnancy', 'menstrual', 'reproductive'],
-            'oncologist': ['cancer', 'tumor'],
-            'pulmonologist': ['lung', 'breathing', 'cough', 'asthma'],
-            'nephrologist': ['kidney', 'urine', 'urinary']
-        }
-        
-        matching_specialties = []
-        for specialty, keywords in specialty_matches.items():
-            if any(keyword in symptoms_lower for keyword in keywords):
-                matching_specialties.append(specialty)
-        
-        if not matching_specialties:
-            matching_specialties = ['surgeon']  # Default fallback
-        
-        # Find doctors for matching specialties
-        recommended_doctors = []
-        for specialty in matching_specialties[:2]:  # Max 2 specialties
-            specialty_doctors = [doc for doc in self.doctors if doc['category'].lower() == specialty.lower()]
-            if specialty_doctors:
-                # Sort by experience and take top 2
-                specialty_doctors.sort(key=lambda x: int(x['experience'].split()[0]), reverse=True)
-                recommended_doctors.extend(specialty_doctors[:2])
-        
-        if not recommended_doctors:
-            recommended_doctors = sorted(self.doctors, key=lambda x: int(x['experience'].split()[0]), reverse=True)[:2]
-        
-        # Format response
-        response = "Based on your symptoms, here are my recommendations:\n\n**RECOMMENDED DOCTORS:**\n\n"
-        
-        for i, doctor in enumerate(recommended_doctors[:3], 1):
-            response += f"**{i}. {doctor['name']}**\n"
-            response += f"• Specialty: {doctor['category']}\n"
-            response += f"• Experience: {doctor['experience']}\n"
-            response += f"• Expertise: {doctor['expertise']}\n"
-            response += f"• Phone: {doctor['phone']}\n"
-            response += f"• Address: {doctor['address']}\n"
-            response += f"• Available: {doctor['start_time']} to {doctor['off_time']}\n\n"
-        
-        response += f"I recommend starting with {recommended_doctors[0]['name']}. Please call to schedule an appointment. Take care!"
-        
-        return response
+            # Smart fallback when AI fails
+            fallback_response = self._get_smart_fallback(user_input_clean)
+            conversation['messages'].append({'user': user_input, 'assistant': fallback_response})
+            return fallback_response
 
 # Initialize chatbot
 chatbot = HealthAssistantChatbot()
@@ -530,7 +399,7 @@ def chat():
         
         if not data:
             return jsonify({
-                'response': 'Please send a valid message!',
+                'response': 'Hello! I\'m your health assistant. How can I help you today?',
                 'session_id': 'error',
                 'timestamp': datetime.datetime.now().isoformat()
             }), 400
@@ -540,12 +409,12 @@ def chat():
         
         if not user_message:
             return jsonify({
-                'response': 'Hello! I\'m your health assistant. What health concern would you like to discuss today?',
+                'response': 'Hi there! I\'m here to help you with any health concerns or doctor recommendations. What\'s on your mind?',
                 'session_id': session_id,
                 'timestamp': datetime.datetime.now().isoformat()
             })
         
-        print(f"Processing: '{user_message}' for session: {session_id}")
+        print(f"Natural chat processing: '{user_message}' for session: {session_id}")
         
         response_text = chatbot.process_query(user_message, session_id)
         
@@ -558,7 +427,7 @@ def chat():
     except Exception as e:
         print(f"Error in chat endpoint: {str(e)}")
         return jsonify({
-            'response': 'I apologize for the technical issue. Please tell me about your health concerns and I\'ll help you find the right doctor.',
+            'response': 'Hi! I\'m here to help you find the right doctor for any health concerns. How can I assist you today?',
             'session_id': 'error_session',
             'timestamp': datetime.datetime.now().isoformat()
         }), 500
@@ -567,7 +436,7 @@ def chat():
 def health():
     return jsonify({
         'status': 'healthy', 
-        'service': 'Health Assistant AI',
+        'service': 'Natural Health Assistant AI',
         'timestamp': datetime.datetime.now().isoformat(),
         'doctors_loaded': len(chatbot.doctors)
     })
@@ -575,19 +444,25 @@ def health():
 @app.route('/', methods=['GET'])
 def index():
     return jsonify({
-        'message': 'Health Assistant Chatbot API - Improved Version',
+        'message': 'Natural Health Assistant Chatbot API',
         'status': 'online',
+        'features': [
+            'Natural conversation flow',
+            'Contextual doctor recommendations', 
+            'Empathetic responses',
+            'Flexible interaction patterns'
+        ],
         'endpoints': {
             'chat': '/api/chat (POST)',
             'health': '/health (GET)'
         },
-        'usage': 'Send POST request to /api/chat with {"message": "your health concern", "session_id": "optional_session_id"}',
+        'usage': 'Send POST request to /api/chat with {"message": "your message", "session_id": "optional_session_id"}',
         'timestamp': datetime.datetime.now().isoformat()
     })
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
-    print(f"🏥 Starting Improved Health Assistant Chatbot on port {port}")
+    print(f"🤖 Starting Natural Health Assistant Chatbot on port {port}")
     print(f"👨‍⚕️ Loaded {len(chatbot.doctors)} doctors")
-    print("Available specialties:", set([doc['category'] for doc in chatbot.doctors]))
+    print("🗣️  Ready for natural conversations!")
     app.run(host='0.0.0.0', port=port, debug=False)
