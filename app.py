@@ -14,7 +14,7 @@ class HealthAssistantChatbot:
     def __init__(self):
         self.api_key = os.getenv('OPENROUTER_API_KEY', 'your_openrouter_api_key_here')
         self.base_url = "https://openrouter.ai/api/v1/chat/completions"
-        self.model = "deepseek/deepseek-r1:free"  
+        self.model = "deepseek/deepseek-r1:free"  # Using DeepSeek R1 free tier
         
         self.doctors = self._load_doctor_data()
         self.conversations = {}
@@ -283,7 +283,7 @@ IMPORTANT RULES:
             }
             
             print(f"Calling API with model: {self.model}")
-            response = requests.post(self.base_url, json=payload, headers=headers, timeout=30)
+            response = requests.post(self.base_url, json=payload, headers=headers, timeout=15)  # Reduced timeout
             
             # Better error handling
             if response.status_code == 200:
@@ -319,43 +319,49 @@ IMPORTANT RULES:
         
         # Enhanced symptom-to-specialty mapping
         specialty_keywords = {
-            'gastroenterologist': ['stomach', 'abdomen', 'belly', 'digestive', 'nausea', 'vomit', 'diarrhea', 'constipation', 'gastric', 'bowel', 'liver', 'gut'],
-            'cardiologist': ['heart', 'chest pain', 'blood pressure', 'cardiac', 'palpitations', 'bp', 'hypertension', 'chest hurt', 'heart beat'],
-            'neurologist': ['headache', 'migraine', 'brain', 'seizure', 'memory', 'nervous', 'dizzy', 'head hurt', 'head pain', 'confusion'],
+            'cardiologist': ['chest pain', 'heart', 'cardiac', 'blood pressure', 'palpitations', 'bp', 'hypertension', 'chest hurt', 'heart beat', 'chest pressure', 'chest tight'],
+            'gastroenterologist': ['stomach', 'abdomen', 'belly', 'digestive', 'nausea', 'vomit', 'diarrhea', 'constipation', 'gastric', 'bowel', 'liver', 'gut', 'stomach pain', 'abdominal pain'],
+            'neurologist': ['headache', 'migraine', 'brain', 'seizure', 'memory', 'nervous', 'dizzy', 'head hurt', 'head pain', 'confusion', 'dizziness'],
             'pediatrician': ['child', 'baby', 'infant', 'kid', 'toddler', 'pediatric', 'my son', 'my daughter', 'children'],
             'gynecologist': ['pregnancy', 'pregnant', 'menstrual', 'period', 'reproductive', 'uterus', 'ovarian', 'women health'],
             'oncologist': ['cancer', 'tumor', 'chemotherapy', 'oncology', 'malignant', 'biopsy', 'mass'],
-            'pulmonologist': ['lung', 'breathing', 'cough', 'asthma', 'pneumonia', 'respiratory', 'shortness of breath', 'chest congestion'],
+            'pulmonologist': ['lung', 'breathing', 'cough', 'asthma', 'pneumonia', 'respiratory', 'shortness of breath', 'chest congestion', 'breath'],
             'nephrologist': ['kidney', 'urine', 'urinary', 'dialysis', 'renal', 'bladder'],
             'surgeon': ['surgery', 'operation', 'surgical', 'trauma', 'accident', 'injury', 'wound', 'cut', 'broken'],
             'radiologist': ['scan', 'x-ray', 'mri', 'ct scan', 'imaging', 'xray']
         }
         
-        # Find matching specialties
-        matching_specialties = []
+        # Find matching specialties with better scoring
+        specialty_scores = {}
         for specialty, keywords in specialty_keywords.items():
-            matches = sum(1 for keyword in keywords if keyword in all_conversation)
-            if matches > 0:
-                matching_specialties.append((specialty, matches))
+            score = 0
+            for keyword in keywords:
+                if keyword in all_conversation:
+                    # Give higher score for exact phrase matches
+                    if len(keyword.split()) > 1:
+                        score += 3  # Multi-word phrases get higher score
+                    else:
+                        score += 1
+            if score > 0:
+                specialty_scores[specialty] = score
         
-        # Sort by relevance (number of matches)
-        matching_specialties.sort(key=lambda x: x[1], reverse=True)
+        # Sort by relevance (score)
+        matching_specialties = sorted(specialty_scores.items(), key=lambda x: x[1], reverse=True)
         
         # Get recommended doctors
         recommended_doctors = []
         
         if matching_specialties:
-            # Get doctors for top 2 matching specialties
-            for specialty, _ in matching_specialties[:2]:
+            # Get doctors for top matching specialties
+            for specialty, score in matching_specialties[:2]:
                 specialty_doctors = [doc for doc in self.doctors if doc['category'].lower() == specialty]
                 if specialty_doctors:
-                    # Sort by experience and take top 2
+                    # Sort by experience and take top doctors
                     specialty_doctors.sort(key=lambda x: int(x['experience'].split()[0]), reverse=True)
                     recommended_doctors.extend(specialty_doctors[:2])
         
-        # If no specific matches, recommend general doctors
+        # If no specific matches, recommend experienced general doctors
         if not recommended_doctors:
-            # Sort all doctors by experience and take top 3
             all_doctors_sorted = sorted(self.doctors, key=lambda x: int(x['experience'].split()[0]), reverse=True)
             recommended_doctors = all_doctors_sorted[:3]
         
@@ -367,21 +373,25 @@ IMPORTANT RULES:
                 seen.add(doc['name'])
                 unique_doctors.append(doc)
         
-        # Format response
-        if any(word in user_lower for word in ['pain', 'hurt', 'sick', 'symptoms', 'problem']):
-            response = "I'm sorry to hear you're not feeling well. Based on what you've described, here are some doctors who could help:\n\n"
+        # Create contextual response based on symptoms
+        if 'chest pain' in all_conversation or ('chest' in all_conversation and 'pain' in all_conversation):
+            intro = "Chest pain should definitely be evaluated by a medical professional. Based on your symptoms, here are some cardiologists I'd recommend:"
+        elif 'stomach' in all_conversation:
+            intro = "For stomach issues, I'd recommend seeing a gastroenterologist. Here are some excellent options:"
+        elif 'headache' in all_conversation or 'head' in all_conversation:
+            intro = "For persistent headaches, a neurologist would be the best choice. Here are some specialists:"
         else:
-            response = "Here are some highly recommended doctors for you:\n\n"
+            intro = "Based on your symptoms, here are some doctors who could help:"
         
-        response += "**RECOMMENDED DOCTORS:**\n\n"
+        response = f"{intro}\n\n**RECOMMENDED DOCTORS:**\n\n"
         
         for i, doctor in enumerate(unique_doctors[:3], 1):
-            response += f"**{i}. {doctor['name']}** - {doctor['category']}\n"
+            response += f"**{i}. Dr. {doctor['name']}** - {doctor['category']}\n"
             response += f"• Experience: {doctor['experience']} | Expertise: {doctor['expertise']}\n"
             response += f"• Phone: {doctor['phone']} | Location: {doctor['address']}\n"
             response += f"• Available: {doctor['start_time']} to {doctor['off_time']}\n\n"
         
-        response += "Would you like me to tell you more about any of these doctors, or do you have other questions?"
+        response += "I'd recommend calling to schedule an appointment. Is there anything specific you'd like to know about any of these doctors?"
         
         return response
 
@@ -421,22 +431,43 @@ IMPORTANT RULES:
         return health_mentioned
 
     def _get_smart_fallback(self, user_input: str, conversation_history: List) -> str:
-        """Provide contextual fallback responses"""
+        """Provide contextual fallback responses with natural conversation"""
         user_lower = user_input.lower()
         
+        # Handle greetings
         if any(greeting in user_lower for greeting in ['hi', 'hello', 'hey', 'sup']):
             return "Hello! I'm here to help you find the right doctor for any health concerns. How can I assist you today?"
         
+        # Handle thanks/goodbye
         if any(word in user_lower for word in ['thanks', 'thank you', 'bye', 'goodbye']):
             return "You're welcome! Take care of your health, and don't hesitate to reach out if you need any doctor recommendations."
         
+        # Handle "how are you"
         if 'how are you' in user_lower:
             return "I'm doing well, thank you for asking! I'm here to help you with any health concerns or doctor recommendations. How are you feeling?"
         
-        # If user mentions health symptoms, provide doctor recommendations
-        if self._should_recommend_doctors(user_input, conversation_history):
-            return self._analyze_symptoms_and_recommend_fallback(user_input, conversation_history)
+        # For health symptoms - ask follow-up questions naturally first
+        health_symptoms = ['pain', 'hurt', 'sick', 'symptoms', 'problem', 'ache', 'sore', 'fever', 'headache', 'stomach', 'chest', 'breathing', 'cough', 'dizzy', 'nausea']
         
+        if any(symptom in user_lower for symptom in health_symptoms):
+            # Check if this is first mention or if we need more info
+            if not conversation_history or len(conversation_history) < 2:
+                # Ask natural follow-up questions first
+                if 'chest' in user_lower and 'pain' in user_lower:
+                    return "I'm sorry to hear about your chest pain. That's definitely something to take seriously. How long have you been experiencing this chest pain? Is it sharp, dull, or more like pressure?"
+                elif 'stomach' in user_lower:
+                    return "Sorry to hear about your stomach troubles. Can you tell me more about what kind of stomach issues you're having? Is it pain, nausea, or something else?"
+                elif 'headache' in user_lower or 'head' in user_lower:
+                    return "Headaches can be really uncomfortable. How severe would you say this headache is, and how long have you been dealing with it?"
+                elif 'breathing' in user_lower or 'cough' in user_lower:
+                    return "I understand you're having breathing issues. Can you describe what's happening - is it shortness of breath, a persistent cough, or something else?"
+                else:
+                    return f"I'm sorry to hear you're not feeling well. Can you tell me a bit more about what's bothering you? The more details you can share, the better I can help you find the right doctor."
+            else:
+                # If we've already been talking, provide recommendations
+                return self._analyze_symptoms_and_recommend_fallback(user_input, conversation_history)
+        
+        # Default response
         return "I'm here to help you find the right doctor for your health needs. What's on your mind today?"
 
     def process_query(self, user_input: str, session_id: str = "default") -> str:
@@ -539,7 +570,7 @@ def index():
     return jsonify({
         'message': 'Natural Health Assistant Chatbot API - DeepSeek R1 0528',
         'status': 'online',
-        'model': 'deepseek/deepseek-r1-0528:free',
+        'model': 'deepseek/deepseek-r1:free',
         'features': [
             'Natural conversation flow',
             'Contextual doctor recommendations', 
