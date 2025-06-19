@@ -14,7 +14,7 @@ class HealthAssistantChatbot:
     def __init__(self):
         self.api_key = os.getenv('OPENROUTER_API_KEY', 'your_openrouter_api_key_here')
         self.base_url = "https://openrouter.ai/api/v1/chat/completions"
-        self.model = "deepseek/deepseek-r1-0528:free"  # Updated to use R1 0528 free
+        self.model = "deepseek/deepseek-r1:free"  
         
         self.doctors = self._load_doctor_data()
         self.conversations = {}
